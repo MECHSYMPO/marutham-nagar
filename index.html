@@ -703,6 +703,7 @@ body.viewer-mode [data-del-gallery]{
     try { db._marutham_client_updated_at = new Date().toISOString(); } catch(e) {}
     localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
     renderAll();
+    if (window.MARUTHAM_CLOUD) window.MARUTHAM_CLOUD.queuePush();
     if (msg) flash(msg);
   }
 
@@ -1130,7 +1131,7 @@ body.viewer-mode [data-del-gallery]{
 </div>
 
 <script id="buildtrackCloudSync">
-/* MARUTHAM NAGAR — PERSISTENT SUPABASE CLOUD SYNC */
+/* MARUTHAM NAGAR — ROBUST PERSISTENT SUPABASE CLOUD SYNC */
 window.BUILTRACK_CLOUD={
   SUPABASE_URL:"https://fmbzibdkuqazvsdfyafb.supabase.co",
   SUPABASE_ANON_KEY:"sb_publishable_lPGb0UY_8-TeWLS_vcwscw_Bo-_WzSR",
@@ -1138,100 +1139,158 @@ window.BUILTRACK_CLOUD={
 };
 (function(){
   "use strict";
-  const cfg=window.BUILTRACK_CLOUD, KEY="buildtrack_complete_v1", META_KEY="buildtrack_cloud_meta_v6";
-  let initialized=false, pushing=false, timer=null, dirty=false, lastCloudUpdatedAt="";
-  function base(){return cfg.SUPABASE_URL.replace(/\/$/,"");}
+  const cfg=window.BUILTRACK_CLOUD;
+  const KEY="buildtrack_complete_v1";
+  const META_KEY="buildtrack_cloud_meta_v7";
+  let timer=null, pushing=false, initialized=false, lastCloudUpdatedAt="";
+  const originalSetItem=Storage.prototype.setItem;
+  function base(){return (cfg.SUPABASE_URL||"").replace(/\/$/,"");}
   function endpoint(){return base()+"/rest/v1/buildtrack_project";}
   function row(){return endpoint()+"?id=eq."+encodeURIComponent(cfg.PROJECT_ID)+"&select=id,payload,updated_at";}
-  function headers(extra){return Object.assign({apikey:cfg.SUPABASE_ANON_KEY,Authorization:"Bearer "+cfg.SUPABASE_ANON_KEY,Accept:"application/json","Content-Type":"application/json"},extra||{});}
-  function configured(){return /^https:\/\/[^\s]+\.supabase\.co$/.test(cfg.SUPABASE_URL||"")&&!!cfg.SUPABASE_ANON_KEY;}
-  function toast(t,hide){let e=document.getElementById("cloudStatus");if(!e){e=document.createElement("div");e.id="cloudStatus";e.style.cssText="position:fixed;right:14px;bottom:14px;z-index:99999;padding:9px 12px;border-radius:10px;background:rgba(15,23,42,.95);color:#fff;font:700 12px Arial;max-width:90vw";document.body.appendChild(e);}e.textContent=t;e.style.display=hide?"none":"block";}
-  function getMeta(){try{return JSON.parse(localStorage.getItem(META_KEY)||"{}")}catch(e){return {}}}
-  function setMeta(){localStorage.setItem(META_KEY,JSON.stringify({dirty,lastCloudUpdatedAt}));}
-  function local(){try{const x=localStorage.getItem(KEY);return x?JSON.parse(x):null}catch(e){return null}}
-  function clone(x){return JSON.parse(JSON.stringify(x));}
-  function stampPayload(payload){const out=clone(payload||{});out._marutham_client_updated_at=new Date().toISOString();return out;}
-  async function fetchWithTimeout(url,opts={},ms=8000){
-    const c=new AbortController(); const id=setTimeout(()=>c.abort(),ms);
-    try{return await fetch(url,{...opts,signal:c.signal});}
-    catch(e){if(e&&e.name==="AbortError") throw Error("TIMEOUT"); throw e;}
+  function headers(extra){return Object.assign({
+    apikey:cfg.SUPABASE_ANON_KEY,
+    Accept:"application/json",
+    "Content-Type":"application/json"
+  },extra||{});}
+  function configured(){return /^https:\/\/[^\s]+\.supabase\.co$/.test(cfg.SUPABASE_URL||"") && !!cfg.SUPABASE_ANON_KEY;}
+  function toast(t,hide){
+    let e=document.getElementById("cloudStatus");
+    if(!e){e=document.createElement("div");e.id="cloudStatus";e.style.cssText="position:fixed;right:14px;bottom:14px;z-index:99999;padding:9px 12px;border-radius:10px;background:rgba(15,23,42,.95);color:#fff;font:700 12px Arial;max-width:90vw";document.body.appendChild(e);}
+    e.textContent=t; e.style.display=hide?"none":"block";
+  }
+  function local(){try{const x=localStorage.getItem(KEY);return x?JSON.parse(x):null}catch(e){return null;}}
+  function clone(x){return JSON.parse(JSON.stringify(x||{}));}
+  function localStamp(x){return x&&x._marutham_client_updated_at||"";}
+  function saveLocalObject(x){originalSetItem.call(localStorage,KEY,JSON.stringify(x));}
+  function meta(){try{return JSON.parse(localStorage.getItem(META_KEY)||"{}")}catch(e){return {}}}
+  function setMeta(v){originalSetItem.call(localStorage,META_KEY,JSON.stringify(v));}
+  async function fetchTimeout(url,opts={},ms=8000){
+    const c=new AbortController(), id=setTimeout(()=>c.abort(),ms);
+    try{return await fetch(url,Object.assign({},opts,{signal:c.signal,cache:"no-store"}));}
+    catch(e){if(e&&e.name==="AbortError")throw new Error("TIMEOUT");throw e;}
     finally{clearTimeout(id);}
   }
-  async function getCloud(){const r=await fetchWithTimeout(row(),{headers:headers(),cache:"no-store"},8000);const t=await r.text();if(!r.ok)throw Error("HTTP "+r.status+" "+t);const a=t?JSON.parse(t):[];return a[0]||null;}
+  async function getCloud(){
+    const r=await fetchTimeout(row(),{headers:headers()},8000);
+    const text=await r.text();
+    if(!r.ok)throw new Error("HTTP "+r.status+" "+text);
+    const a=text?JSON.parse(text):[];
+    return a[0]||null;
+  }
   async function upsert(payload){
     const now=new Date().toISOString();
-    const body={id:cfg.PROJECT_ID,payload:stampPayload(payload),updated_at:now};
-    // Use one atomic Supabase upsert. This avoids the PATCH/POST race that could
-    // make a successful-looking save disappear after a page reload.
-    const url=endpoint()+"?on_conflict=id";
-    const r=await fetchWithTimeout(url,{
+    const p=clone(payload);
+    p._marutham_client_updated_at=localStamp(p)||now;
+    const body={id:cfg.PROJECT_ID,payload:p,updated_at:now};
+    const r=await fetchTimeout(endpoint()+"?on_conflict=id",{
       method:"POST",
       headers:headers({Prefer:"resolution=merge-duplicates,return=representation"}),
-      body:JSON.stringify(body),
-      cache:"no-store"
+      body:JSON.stringify(body)
     },8000);
-    const t=await r.text();
-    if(!r.ok) throw Error("HTTP "+r.status+" "+t);
-    let a=[];try{a=t?JSON.parse(t):[]}catch(e){}
-    if(!a.length) throw Error("Supabase returned no saved row");
-    return (a[0]&&a[0].updated_at)||now;
+    const text=await r.text();
+    if(!r.ok)throw new Error("HTTP "+r.status+" "+text);
+    const a=text?JSON.parse(text):[];
+    if(!a.length)throw new Error("No saved row returned by Supabase");
+    return a[0];
   }
   async function push(){
     if(!configured()||pushing)return false;
-    const p=local();if(!p)return false;pushing=true;
-    try{toast("Saving to cloud…");const t=await upsert(p);dirty=false;lastCloudUpdatedAt=t;setMeta();toast("Cloud synced ✓");setTimeout(()=>toast("",true),1200);return true;}
-    catch(e){console.error("Supabase sync:",e);dirty=true;setMeta();toast("Cloud sync failed — data kept on this device");return false}
-    finally{pushing=false}
+    const p=local(); if(!p)return false;
+    pushing=true;
+    try{
+      toast("Saving to cloud…");
+      const saved=await upsert(p);
+      lastCloudUpdatedAt=saved.updated_at||new Date().toISOString();
+      setMeta({dirty:false,lastCloudUpdatedAt});
+      toast("Cloud synced ✓");
+      setTimeout(()=>toast("",true),1200);
+      return true;
+    }catch(e){
+      console.error("Supabase sync:",e);
+      setMeta({dirty:true,lastCloudUpdatedAt});
+      toast("Cloud sync failed — local data kept");
+      return false;
+    }finally{pushing=false;}
   }
-  function queue(delay){dirty=true;setMeta();clearTimeout(timer);timer=setTimeout(async()=>{if(!(await push())&&dirty)queue(3000)},delay||500)}
+  function queue(delay=300){
+    clearTimeout(timer);
+    timer=setTimeout(()=>push(),delay);
+  }
   async function initial(){
     try{
-      const localData=local(), cloud=await getCloud(), m=getMeta();
-      dirty=!!m.dirty;
+      const localData=local();
+      const cloud=await getCloud();
       if(!cloud){
-        if(localData){ dirty=true; setMeta(); await push(); }
+        if(localData) await push();
         return;
       }
-      const c=cloud.payload||{};
-      const cStamp=c._marutham_client_updated_at||cloud.updated_at||"";
-      const lStamp=localData&&localData._marutham_client_updated_at||"";
-      // Any locally dirty/newer data wins and is uploaded immediately.
-      if(dirty || (localData&&lStamp&&cStamp&&new Date(lStamp)>new Date(cStamp))){
-        dirty=true; setMeta(); await push(); return;
+      const cloudPayload=cloud.payload||{};
+      const cStamp=localStamp(cloudPayload)||cloud.updated_at||"";
+      const lStamp=localStamp(localData);
+
+      /* LOCAL-FIRST RULE:
+         If this browser has data but no reliable client timestamp, keep it and upload it.
+         Never replace it with cloud data just because the cloud row exists. */
+      if(localData && !lStamp){
+        localData._marutham_client_updated_at=new Date().toISOString();
+        saveLocalObject(localData);
+        await push();
+        return;
       }
-      // If this browser has no local database, restore the cloud snapshot.
-      if(!localData){
-        Storage.prototype.setItem.call(localStorage,KEY,JSON.stringify(c));
-        if(typeof db!=="undefined") db=JSON.parse(JSON.stringify(c));
-        if(typeof renderAll==="function") renderAll();
-      } else if(cStamp && lStamp && new Date(cStamp)>new Date(lStamp)){
-        // Cloud is newer: restore it.
-        Storage.prototype.setItem.call(localStorage,KEY,JSON.stringify(c));
-        if(typeof db!=="undefined") db=JSON.parse(JSON.stringify(c));
+      if(localData && lStamp){
+        if(!cStamp || new Date(lStamp)>=new Date(cStamp)){
+          await push();
+          return;
+        }
+      }
+      /* Only restore cloud when cloud is demonstrably newer. */
+      if(!localData || (cStamp && lStamp && new Date(cStamp)>new Date(lStamp))){
+        saveLocalObject(clone(cloudPayload));
+        if(typeof db!=="undefined") db=clone(cloudPayload);
         if(typeof renderAll==="function") renderAll();
       }
       lastCloudUpdatedAt=cloud.updated_at||"";
-      dirty=false;
-      setMeta();
+      setMeta({dirty:false,lastCloudUpdatedAt});
     }catch(e){
       console.error("Initial cloud sync:",e);
-      toast("Cloud connection failed — data is safe on this device");
+      toast("Cloud unavailable — using saved local data");
+      setTimeout(()=>toast("",true),1800);
     }
   }
   async function pull(){
-    if(!configured()||pushing||dirty)return;
-    try{const c=await getCloud();if(!c)return;const ct=c.updated_at||"";if(lastCloudUpdatedAt&&ct&&new Date(ct)<=new Date(lastCloudUpdatedAt))return;const raw=JSON.stringify(c.payload||{});if(localStorage.getItem(KEY)!==raw){Storage.prototype.setItem.call(localStorage,KEY,raw);if(typeof db!=="undefined")db=JSON.parse(raw);if(typeof renderAll==="function")renderAll();}lastCloudUpdatedAt=ct;setMeta();}
-    catch(e){console.warn("Cloud pull:",e)}
+    if(!configured()||pushing)return;
+    try{
+      const c=await getCloud(); if(!c)return;
+      const p=c.payload||{}, ct=c.updated_at||"";
+      const current=local(), ls=localStamp(current), cs=localStamp(p)||ct;
+      /* Never overwrite a local edit that is newer/equal. */
+      if(current && ls && cs && new Date(ls)>=new Date(cs))return;
+      if(!current || (cs && ls && new Date(cs)>new Date(ls))){
+        saveLocalObject(clone(p));
+        if(typeof db!=="undefined") db=clone(p);
+        if(typeof renderAll==="function") renderAll();
+      }
+      lastCloudUpdatedAt=ct;
+      setMeta({dirty:false,lastCloudUpdatedAt});
+    }catch(e){console.warn("Cloud pull:",e);}
   }
-  const original=Storage.prototype.setItem;
-  Storage.prototype.setItem=function(k,v){const r=original.apply(this,arguments);if(this===localStorage&&k===KEY&&initialized)queue(500);return r;};
+  Storage.prototype.setItem=function(k,v){
+    const result=originalSetItem.apply(this,arguments);
+    if(this===localStorage && k===KEY && initialized){
+      try{
+        const obj=JSON.parse(v);
+        if(!obj._marutham_client_updated_at){obj._marutham_client_updated_at=new Date().toISOString();originalSetItem.call(localStorage,KEY,JSON.stringify(obj));}
+      }catch(e){}
+      queue(400);
+    }
+    return result;
+  };
   window.MARUTHAM_CLOUD={push,pull,queuePush:()=>queue(100)};
   document.addEventListener("DOMContentLoaded",()=>{
     if(!configured()){toast("Cloud setup required");return;}
-    // Never block the app waiting for cloud. Start the UI immediately and sync in background.
-    toast("Connecting to cloud…");
     initialized=true;
-    initial().finally(()=>{setTimeout(()=>toast("",true),1200);});
+    /* App is already rendered from localStorage. Cloud sync is background only. */
+    initial();
     setInterval(pull,5000);
     window.addEventListener("focus",pull);
   });
