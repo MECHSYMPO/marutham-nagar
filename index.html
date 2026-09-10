@@ -554,7 +554,8 @@ body.viewer-mode [data-del-gallery]{
 (() => {
   "use strict";
 
-  const STORAGE_KEY = "buildtrack_complete_v1";
+  const STORAGE_KEY = "buildtrack_complete_v2";
+  const LEGACY_STORAGE_KEY = "buildtrack_complete_v1";
   const CONTRACT_LABOUR = 516000;
   const STAGES = [
     ["01","Foundation","Ground & footing"],
@@ -676,7 +677,15 @@ body.viewer-mode [data-del-gallery]{
 
   function loadDB() {
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
+      let raw = localStorage.getItem(STORAGE_KEY);
+      // One-time migration from the older app storage key.
+      if (!raw) {
+        const legacy = localStorage.getItem(LEGACY_STORAGE_KEY);
+        if (legacy) {
+          raw = legacy;
+          localStorage.setItem(STORAGE_KEY, legacy);
+        }
+      }
       if (!raw) return defaultDB();
       const parsed = JSON.parse(raw);
       const base = defaultDB();
@@ -1140,7 +1149,7 @@ window.BUILTRACK_CLOUD={
 (function(){
   "use strict";
   const cfg=window.BUILTRACK_CLOUD;
-  const KEY="buildtrack_complete_v1";
+  const KEY="buildtrack_complete_v2";
   const META_KEY="buildtrack_cloud_meta_v7";
   let timer=null, pushing=false, initialized=false, lastCloudUpdatedAt="";
   const originalSetItem=Storage.prototype.setItem;
@@ -1149,6 +1158,7 @@ window.BUILTRACK_CLOUD={
   function row(){return endpoint()+"?id=eq."+encodeURIComponent(cfg.PROJECT_ID)+"&select=id,payload,updated_at";}
   function headers(extra){return Object.assign({
     apikey:cfg.SUPABASE_ANON_KEY,
+    Authorization:"Bearer "+cfg.SUPABASE_ANON_KEY,
     Accept:"application/json",
     "Content-Type":"application/json"
   },extra||{});}
@@ -1468,8 +1478,18 @@ document.addEventListener("DOMContentLoaded",function(){
 </script>
 
 <script>
+// Prevent an old PWA service worker from serving a stale version of the app.
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(console.warn));
+  window.addEventListener('load', async () => {
+    try {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map(r => r.unregister()));
+      if (window.caches) {
+        const names = await caches.keys();
+        await Promise.all(names.map(n => caches.delete(n)));
+      }
+    } catch (e) { console.warn('SW cleanup:', e); }
+  });
 }
 </script>
 </body>
