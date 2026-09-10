@@ -1230,8 +1230,11 @@ window.BUILTRACK_CLOUD={
     try{
       toast("Saving to cloud…");
       const saved=await upsert(p);
+      const fresh=clone(saved.payload||p);
+      saveLocalObject(fresh);
       lastCloudUpdatedAt=saved.updated_at||new Date().toISOString();
       setMeta({dirty:false,lastCloudUpdatedAt});
+      window.dispatchEvent(new CustomEvent("marutham-cloud-data",{detail:fresh}));
       toast("Cloud synced ✓");
       setTimeout(()=>toast("",true),1200);
       return true;
@@ -1248,48 +1251,35 @@ window.BUILTRACK_CLOUD={
   }
   async function initial(){
     try{
-      /* LOCAL DATA IS ALWAYS SHOWN FIRST. A reload must never blank or replace a
-         freshly saved entry just because the cloud request is slow or stale. */
+      /* CLOUD IS THE SOURCE OF TRUTH AFTER A SUCCESSFUL SAVE.
+         Local storage is only the offline/cache layer. */
       const localData=local();
       const m=meta();
 
-      if(localData){
-        if(!localStamp(localData)){
-          localData._marutham_client_updated_at=new Date().toISOString();
-          saveLocalObject(localData);
-        }
-        if(m.dirty){
-          await push();
-          return;
-        }
+      if(localData && m.dirty){
+        const saved=await upsert(localData);
+        const fresh=clone(saved.payload||localData);
+        saveLocalObject(fresh);
+        lastCloudUpdatedAt=saved.updated_at||new Date().toISOString();
+        setMeta({dirty:false,lastCloudUpdatedAt});
+        window.dispatchEvent(new CustomEvent("marutham-cloud-data",{detail:fresh}));
+        return;
       }
 
       const cloud=await getCloud();
       if(!cloud){
-        if(localData) await push();
+        if(localData) {
+          setMeta({dirty:true,lastCloudUpdatedAt});
+          await push();
+        }
         return;
       }
 
-      const cloudPayload=cloud.payload||{};
-      const cStamp=localStamp(cloudPayload)||cloud.updated_at||"";
-      const current=local();
-      const lStamp=localStamp(current);
-
-      /* If local and cloud represent the same/newer snapshot, keep local.
-         Only a demonstrably newer cloud snapshot can replace it. */
-      if(current && lStamp && cStamp && new Date(lStamp)>=new Date(cStamp)){
-        lastCloudUpdatedAt=cloud.updated_at||"";
-        setMeta({dirty:false,lastCloudUpdatedAt});
-        return;
-      }
-
-      if(!current || (cStamp && lStamp && new Date(cStamp)>new Date(lStamp))){
-        const fresh=clone(cloudPayload);
-        saveLocalObject(fresh);
-        window.dispatchEvent(new CustomEvent("marutham-cloud-data",{detail:fresh}));
-      }
-      lastCloudUpdatedAt=cloud.updated_at||"";
+      const fresh=clone(cloud.payload||{});
+      saveLocalObject(fresh);
+      lastCloudUpdatedAt=cloud.updated_at||new Date().toISOString();
       setMeta({dirty:false,lastCloudUpdatedAt});
+      window.dispatchEvent(new CustomEvent("marutham-cloud-data",{detail:fresh}));
     }catch(e){
       console.error("Initial cloud sync:",e);
       toast("Cloud unavailable — saved data kept");
@@ -1299,18 +1289,16 @@ window.BUILTRACK_CLOUD={
   async function pull(){
     if(!configured()||pushing)return;
     try{
+      const m=meta();
+      if(m.dirty)return;
       const c=await getCloud(); if(!c)return;
-      const p=c.payload||{}, ct=c.updated_at||"";
-      const current=local(), ls=localStamp(current), cs=localStamp(p)||ct;
-      /* Never overwrite a local edit that is newer/equal. */
-      if(current && ls && cs && new Date(ls)>=new Date(cs))return;
-      if(!current || (cs && ls && new Date(cs)>new Date(ls))){
-        const fresh=clone(p);
-        saveLocalObject(fresh);
-        window.dispatchEvent(new CustomEvent("marutham-cloud-data",{detail:fresh}));
-      }
+      const ct=c.updated_at||"";
+      if(ct && ct===lastCloudUpdatedAt)return;
+      const fresh=clone(c.payload||{});
+      saveLocalObject(fresh);
       lastCloudUpdatedAt=ct;
       setMeta({dirty:false,lastCloudUpdatedAt});
+      window.dispatchEvent(new CustomEvent("marutham-cloud-data",{detail:fresh}));
     }catch(e){console.warn("Cloud pull:",e);}
   }
   Storage.prototype.setItem=function(k,v){
