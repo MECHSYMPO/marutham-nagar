@@ -698,6 +698,9 @@ body.viewer-mode [data-del-gallery]{
   }
 
   function saveDB(msg) {
+    // Stamp the local snapshot before saving. This lets the cloud layer
+    // distinguish a fresh local edit from an older cloud snapshot.
+    try { db._marutham_client_updated_at = new Date().toISOString(); } catch(e) {}
     localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
     renderAll();
     if (msg) flash(msg);
@@ -1158,16 +1161,19 @@ window.BUILTRACK_CLOUD={
   async function upsert(payload){
     const now=new Date().toISOString();
     const body={id:cfg.PROJECT_ID,payload:stampPayload(payload),updated_at:now};
-    // Update the existing row first. If it does not exist, create it.
-    let r=await fetchWithTimeout(endpoint()+"?id=eq."+encodeURIComponent(cfg.PROJECT_ID),{method:"PATCH",headers:headers({Prefer:"return=representation"}),body:JSON.stringify({payload:body.payload,updated_at:now}),cache:"no-store"},8000);
-    let t=await r.text();
-    if(!r.ok)throw Error("HTTP "+r.status+" "+t);
+    // Use one atomic Supabase upsert. This avoids the PATCH/POST race that could
+    // make a successful-looking save disappear after a page reload.
+    const url=endpoint()+"?on_conflict=id";
+    const r=await fetchWithTimeout(url,{
+      method:"POST",
+      headers:headers({Prefer:"resolution=merge-duplicates,return=representation"}),
+      body:JSON.stringify(body),
+      cache:"no-store"
+    },8000);
+    const t=await r.text();
+    if(!r.ok) throw Error("HTTP "+r.status+" "+t);
     let a=[];try{a=t?JSON.parse(t):[]}catch(e){}
-    if(!a.length){
-      r=await fetchWithTimeout(endpoint(),{method:"POST",headers:headers({Prefer:"return=representation"}),body:JSON.stringify(body),cache:"no-store"},8000);
-      t=await r.text();if(!r.ok)throw Error("HTTP "+r.status+" "+t);
-      try{a=t?JSON.parse(t):[]}catch(e){}
-    }
+    if(!a.length) throw Error("Supabase returned no saved row");
     return (a[0]&&a[0].updated_at)||now;
   }
   async function push(){
@@ -1182,16 +1188,35 @@ window.BUILTRACK_CLOUD={
     try{
       const localData=local(), cloud=await getCloud(), m=getMeta();
       dirty=!!m.dirty;
-      if(!cloud){if(localData){await push()}return;}
-      const c=cloud.payload||{}, cStamp=c._marutham_client_updated_at||cloud.updated_at||"";
+      if(!cloud){
+        if(localData){ dirty=true; setMeta(); await push(); }
+        return;
+      }
+      const c=cloud.payload||{};
+      const cStamp=c._marutham_client_updated_at||cloud.updated_at||"";
       const lStamp=localData&&localData._marutham_client_updated_at||"";
-      if(dirty){await push();return;}
-      /* If this browser has a newer local snapshot than the server, preserve it. */
-      if(localData&&lStamp&&cStamp&&new Date(lStamp)>new Date(cStamp)){dirty=true;setMeta();await push();return;}
-      const raw=JSON.stringify(c), cur=localStorage.getItem(KEY);
-      if(cur!==raw){Storage.prototype.setItem.call(localStorage,KEY,raw);if(typeof db!=="undefined")db=JSON.parse(raw);if(typeof renderAll==="function")renderAll();}
-      lastCloudUpdatedAt=cloud.updated_at||"";dirty=false;setMeta();
-    }catch(e){console.error("Initial cloud sync:",e);toast("Cloud connection failed — local data is safe");}
+      // Any locally dirty/newer data wins and is uploaded immediately.
+      if(dirty || (localData&&lStamp&&cStamp&&new Date(lStamp)>new Date(cStamp))){
+        dirty=true; setMeta(); await push(); return;
+      }
+      // If this browser has no local database, restore the cloud snapshot.
+      if(!localData){
+        Storage.prototype.setItem.call(localStorage,KEY,JSON.stringify(c));
+        if(typeof db!=="undefined") db=JSON.parse(JSON.stringify(c));
+        if(typeof renderAll==="function") renderAll();
+      } else if(cStamp && lStamp && new Date(cStamp)>new Date(lStamp)){
+        // Cloud is newer: restore it.
+        Storage.prototype.setItem.call(localStorage,KEY,JSON.stringify(c));
+        if(typeof db!=="undefined") db=JSON.parse(JSON.stringify(c));
+        if(typeof renderAll==="function") renderAll();
+      }
+      lastCloudUpdatedAt=cloud.updated_at||"";
+      dirty=false;
+      setMeta();
+    }catch(e){
+      console.error("Initial cloud sync:",e);
+      toast("Cloud connection failed — data is safe on this device");
+    }
   }
   async function pull(){
     if(!configured()||pushing||dirty)return;
