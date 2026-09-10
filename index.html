@@ -1218,33 +1218,42 @@ window.BUILTRACK_CLOUD={
   }
   async function initial(){
     try{
+      /* LOCAL DATA IS ALWAYS SHOWN FIRST. A reload must never blank or replace a
+         freshly saved entry just because the cloud request is slow or stale. */
       const localData=local();
+      const m=meta();
+
+      if(localData){
+        if(!localStamp(localData)){
+          localData._marutham_client_updated_at=new Date().toISOString();
+          saveLocalObject(localData);
+        }
+        if(m.dirty){
+          await push();
+          return;
+        }
+      }
+
       const cloud=await getCloud();
       if(!cloud){
         if(localData) await push();
         return;
       }
+
       const cloudPayload=cloud.payload||{};
       const cStamp=localStamp(cloudPayload)||cloud.updated_at||"";
-      const lStamp=localStamp(localData);
+      const current=local();
+      const lStamp=localStamp(current);
 
-      /* LOCAL-FIRST RULE:
-         If this browser has data but no reliable client timestamp, keep it and upload it.
-         Never replace it with cloud data just because the cloud row exists. */
-      if(localData && !lStamp){
-        localData._marutham_client_updated_at=new Date().toISOString();
-        saveLocalObject(localData);
-        await push();
+      /* If local and cloud represent the same/newer snapshot, keep local.
+         Only a demonstrably newer cloud snapshot can replace it. */
+      if(current && lStamp && cStamp && new Date(lStamp)>=new Date(cStamp)){
+        lastCloudUpdatedAt=cloud.updated_at||"";
+        setMeta({dirty:false,lastCloudUpdatedAt});
         return;
       }
-      if(localData && lStamp){
-        if(!cStamp || new Date(lStamp)>=new Date(cStamp)){
-          await push();
-          return;
-        }
-      }
-      /* Only restore cloud when cloud is demonstrably newer. */
-      if(!localData || (cStamp && lStamp && new Date(cStamp)>new Date(lStamp))){
+
+      if(!current || (cStamp && lStamp && new Date(cStamp)>new Date(lStamp))){
         saveLocalObject(clone(cloudPayload));
         if(typeof db!=="undefined") db=clone(cloudPayload);
         if(typeof renderAll==="function") renderAll();
@@ -1253,7 +1262,7 @@ window.BUILTRACK_CLOUD={
       setMeta({dirty:false,lastCloudUpdatedAt});
     }catch(e){
       console.error("Initial cloud sync:",e);
-      toast("Cloud unavailable — using saved local data");
+      toast("Cloud unavailable — saved data kept");
       setTimeout(()=>toast("",true),1800);
     }
   }
@@ -1285,7 +1294,7 @@ window.BUILTRACK_CLOUD={
     }
     return result;
   };
-  window.MARUTHAM_CLOUD={push,pull,queuePush:()=>queue(100)};
+  window.MARUTHAM_CLOUD={push,pull,queuePush:()=>{setMeta({dirty:true,lastCloudUpdatedAt});queue(100);}};
   document.addEventListener("DOMContentLoaded",()=>{
     if(!configured()){toast("Cloud setup required");return;}
     initialized=true;
