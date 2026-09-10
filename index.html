@@ -1123,6 +1123,26 @@ body.viewer-mode [data-del-gallery]{
     el.addEventListener("click",e=>{if(!adminMode){e.preventDefault();e.stopImmediatePropagation();flash("Admin access required")}},true);
   });
 
+  // Receive fresh cloud snapshots and update the live in-memory app immediately.
+  // The cloud sync script is outside this IIFE, so it communicates via a custom event.
+  window.addEventListener("marutham-cloud-data", (ev)=>{
+    try{
+      const incoming=ev && ev.detail ? JSON.parse(JSON.stringify(ev.detail)) : null;
+      if(!incoming) return;
+      db={...defaultDB(),...incoming,
+        settings:{...defaultDB().settings,...(incoming.settings||{})},
+        expenses:Array.isArray(incoming.expenses)?incoming.expenses:[],
+        labor:Array.isArray(incoming.labor)?incoming.labor:[],
+        updates:Array.isArray(incoming.updates)?incoming.updates:[],
+        people:Array.isArray(incoming.people)?incoming.people:[],
+        materials:Array.isArray(incoming.materials)&&incoming.materials.length?incoming.materials:defaultDB().materials,
+        tasks:Array.isArray(incoming.tasks)?incoming.tasks:[],
+        gallery:Array.isArray(incoming.gallery)?incoming.gallery:[]
+      };
+      renderAll();
+    }catch(e){ console.warn("Cloud UI update:",e); }
+  });
+
   populateStageSelects();
   renderAll();
 })();
@@ -1264,9 +1284,9 @@ window.BUILTRACK_CLOUD={
       }
 
       if(!current || (cStamp && lStamp && new Date(cStamp)>new Date(lStamp))){
-        saveLocalObject(clone(cloudPayload));
-        if(typeof db!=="undefined") db=clone(cloudPayload);
-        if(typeof renderAll==="function") renderAll();
+        const fresh=clone(cloudPayload);
+        saveLocalObject(fresh);
+        window.dispatchEvent(new CustomEvent("marutham-cloud-data",{detail:fresh}));
       }
       lastCloudUpdatedAt=cloud.updated_at||"";
       setMeta({dirty:false,lastCloudUpdatedAt});
@@ -1285,9 +1305,9 @@ window.BUILTRACK_CLOUD={
       /* Never overwrite a local edit that is newer/equal. */
       if(current && ls && cs && new Date(ls)>=new Date(cs))return;
       if(!current || (cs && ls && new Date(cs)>new Date(ls))){
-        saveLocalObject(clone(p));
-        if(typeof db!=="undefined") db=clone(p);
-        if(typeof renderAll==="function") renderAll();
+        const fresh=clone(p);
+        saveLocalObject(fresh);
+        window.dispatchEvent(new CustomEvent("marutham-cloud-data",{detail:fresh}));
       }
       lastCloudUpdatedAt=ct;
       setMeta({dirty:false,lastCloudUpdatedAt});
