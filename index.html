@@ -1127,160 +1127,68 @@ body.viewer-mode [data-del-gallery]{
 </div>
 
 <script id="buildtrackCloudSync">
-/* MARUTHAM NAGAR — ROBUST SUPABASE CLOUD SYNC */
-window.BUILTRACK_CLOUD = {
-  SUPABASE_URL: "https://fmbzibdkuqazvsdfyafb.supabase.co",
-  SUPABASE_ANON_KEY: "sb_publishable_lPGb0UY_8-TeWLS_vcwscw_Bo-_WzSR",
-  PROJECT_ID: "main"
+/* MARUTHAM NAGAR — PERSISTENT SUPABASE CLOUD SYNC */
+window.BUILTRACK_CLOUD={
+  SUPABASE_URL:"https://fmbzibdkuqazvsdfyafb.supabase.co",
+  SUPABASE_ANON_KEY:"sb_publishable_lPGb0UY_8-TeWLS_vcwscw_Bo-_WzSR",
+  PROJECT_ID:"main"
 };
 (function(){
   "use strict";
-  const cfg=window.BUILTRACK_CLOUD;
-  const KEY="buildtrack_complete_v1";
-  const META_KEY="buildtrack_cloud_meta_v4";
-  const NOTEBOOK_MARKER="marutham_notebook_import_v2";
-  let initialized=false, busy=false, timer=null, dirty=false, lastCloudUpdatedAt="";
-
-  function configured(){
-    return !!(cfg&&cfg.SUPABASE_URL&&cfg.SUPABASE_ANON_KEY&&/^https:\/\/[^\s]+\.supabase\.co$/.test(cfg.SUPABASE_URL)&&!cfg.SUPABASE_ANON_KEY.includes("PASTE_YOUR"));
-  }
+  const cfg=window.BUILTRACK_CLOUD, KEY="buildtrack_complete_v1", META_KEY="buildtrack_cloud_meta_v6";
+  let initialized=false, pushing=false, timer=null, dirty=false, lastCloudUpdatedAt="";
   function base(){return cfg.SUPABASE_URL.replace(/\/$/,"");}
-  function url(){return base()+"/rest/v1/buildtrack_project";}
-  function rowUrl(){return url()+"?id=eq."+encodeURIComponent(cfg.PROJECT_ID)+"&select=id,payload,updated_at";}
-  function hdr(extra){return Object.assign({apikey:cfg.SUPABASE_ANON_KEY,Authorization:"Bearer "+cfg.SUPABASE_ANON_KEY,"Content-Type":"application/json",Accept:"application/json"},extra||{});}
-  function toast(t,hide){let e=document.getElementById("cloudStatus");if(!e){e=document.createElement("div");e.id="cloudStatus";e.style.cssText="position:fixed;right:14px;bottom:14px;z-index:99999;padding:9px 12px;border-radius:10px;background:rgba(15,23,42,.95);color:#fff;font:700 12px Arial;box-shadow:0 8px 24px rgba(0,0,0,.2);max-width:90vw";document.body.appendChild(e);}e.textContent=t;e.style.display=hide?"none":"block";}
-  function meta(){try{return JSON.parse(localStorage.getItem(META_KEY)||"{}");}catch(e){return {};}}
-  function saveMeta(){try{localStorage.setItem(META_KEY,JSON.stringify({dirty,lastCloudUpdatedAt}));}catch(e){}}
-  function markDirty(){dirty=true;saveMeta();}
-  function clearDirty(t){dirty=false;if(t)lastCloudUpdatedAt=t;saveMeta();}
-  function localPayload(){try{const r=localStorage.getItem(KEY);return r?JSON.parse(r):null;}catch(e){return null;}}
+  function endpoint(){return base()+"/rest/v1/buildtrack_project";}
+  function row(){return endpoint()+"?id=eq."+encodeURIComponent(cfg.PROJECT_ID)+"&select=id,payload,updated_at";}
+  function headers(extra){return Object.assign({apikey:cfg.SUPABASE_ANON_KEY,Authorization:"Bearer "+cfg.SUPABASE_ANON_KEY,Accept:"application/json","Content-Type":"application/json"},extra||{});}
+  function configured(){return /^https:\/\/[^\s]+\.supabase\.co$/.test(cfg.SUPABASE_URL||"")&&!!cfg.SUPABASE_ANON_KEY;}
+  function toast(t,hide){let e=document.getElementById("cloudStatus");if(!e){e=document.createElement("div");e.id="cloudStatus";e.style.cssText="position:fixed;right:14px;bottom:14px;z-index:99999;padding:9px 12px;border-radius:10px;background:rgba(15,23,42,.95);color:#fff;font:700 12px Arial;max-width:90vw";document.body.appendChild(e);}e.textContent=t;e.style.display=hide?"none":"block";}
+  function getMeta(){try{return JSON.parse(localStorage.getItem(META_KEY)||"{}")}catch(e){return {}}}
+  function setMeta(){localStorage.setItem(META_KEY,JSON.stringify({dirty,lastCloudUpdatedAt}));}
+  function local(){try{const x=localStorage.getItem(KEY);return x?JSON.parse(x):null}catch(e){return null}}
   function clone(x){return JSON.parse(JSON.stringify(x));}
-
-  async function fetchCloud(){
-    const res=await fetch(rowUrl(),{headers:hdr(),cache:"no-store"});
-    const text=await res.text();
-    if(!res.ok) throw new Error("HTTP "+res.status+" "+text);
-    const rows=text?JSON.parse(text):[];
-    return rows[0]||null;
+  function stampPayload(payload){const out=clone(payload||{});out._marutham_client_updated_at=new Date().toISOString();return out;}
+  async function getCloud(){const r=await fetch(row(),{headers:headers(),cache:"no-store"});const t=await r.text();if(!r.ok)throw Error("HTTP "+r.status+" "+t);const a=t?JSON.parse(t):[];return a[0]||null;}
+  async function upsert(payload){
+    const now=new Date().toISOString();
+    const body={id:cfg.PROJECT_ID,payload:stampPayload(payload),updated_at:now};
+    /* PUT is an explicit upsert and is more reliable than POST+on_conflict for REST clients. */
+    const r=await fetch(endpoint()+"?id=eq."+encodeURIComponent(cfg.PROJECT_ID),{method:"POST",headers:headers({Prefer:"resolution=merge-duplicates,return=representation"}),body:JSON.stringify(body),cache:"no-store"});
+    const t=await r.text();if(!r.ok)throw Error("HTTP "+r.status+" "+t);
+    let a=[];try{a=t?JSON.parse(t):[]}catch(e){};return (a[0]&&a[0].updated_at)||now;
   }
-
   async function push(){
-    if(!configured()||busy) return false;
-    const payload=localPayload(); if(!payload) return false;
-    busy=true;
+    if(!configured()||pushing)return false;
+    const p=local();if(!p)return false;pushing=true;
+    try{toast("Saving to cloud…");const t=await upsert(p);dirty=false;lastCloudUpdatedAt=t;setMeta();toast("Cloud synced ✓");setTimeout(()=>toast("",true),1200);return true;}
+    catch(e){console.error("Supabase sync:",e);dirty=true;setMeta();toast("Cloud sync failed — data kept on this device");return false}
+    finally{pushing=false}
+  }
+  function queue(delay){dirty=true;setMeta();clearTimeout(timer);timer=setTimeout(async()=>{if(!(await push())&&dirty)queue(3000)},delay||500)}
+  async function initial(){
     try{
-      const now=new Date().toISOString();
-      const res=await fetch(url()+"?on_conflict=id",{
-        method:"POST",
-        headers:hdr({Prefer:"resolution=merge-duplicates,return=representation"}),
-        body:JSON.stringify({id:cfg.PROJECT_ID,payload,updated_at:now})
-      });
-      const text=await res.text();
-      if(!res.ok){toast("Cloud sync failed ("+res.status+")");console.error("Supabase push",res.status,text);return false;}
-      let rows=[];try{rows=text?JSON.parse(text):[];}catch(e){}
-      clearDirty((rows[0]&&rows[0].updated_at)||now);
-      toast("Cloud synced ✓");setTimeout(()=>toast("",true),1500);
-      return true;
-    }catch(e){console.error(e);toast("Cloud connection failed");return false;}
-    finally{busy=false;}
+      const localData=local(), cloud=await getCloud(), m=getMeta();
+      dirty=!!m.dirty;
+      if(!cloud){if(localData){await push()}return;}
+      const c=cloud.payload||{}, cStamp=c._marutham_client_updated_at||cloud.updated_at||"";
+      const lStamp=localData&&localData._marutham_client_updated_at||"";
+      if(dirty){await push();return;}
+      /* If this browser has a newer local snapshot than the server, preserve it. */
+      if(localData&&lStamp&&cStamp&&new Date(lStamp)>new Date(cStamp)){dirty=true;setMeta();await push();return;}
+      const raw=JSON.stringify(c), cur=localStorage.getItem(KEY);
+      if(cur!==raw){Storage.prototype.setItem.call(localStorage,KEY,raw);if(typeof db!=="undefined")db=JSON.parse(raw);if(typeof renderAll==="function")renderAll();}
+      lastCloudUpdatedAt=cloud.updated_at||"";dirty=false;setMeta();
+    }catch(e){console.error("Initial cloud sync:",e);toast("Cloud connection failed — local data is safe");}
   }
-
-  function queuePush(delay=350){
-    markDirty(); clearTimeout(timer);
-    timer=setTimeout(async()=>{const ok=await push();if(!ok&&dirty)queuePush(2500);},delay);
-  }
-
-  function mergeSeedInto(local, cloud){
-    if(!local) return cloud||null;
-    if(!cloud) return local;
-    const out=clone(cloud);
-    const merge=(name)=>{
-      const a=Array.isArray(out[name])?out[name]:[];
-      const b=Array.isArray(local[name])?local[name]:[];
-      const ids=new Set(a.map(x=>String(x.id)));
-      b.forEach(x=>{if(!ids.has(String(x.id))) a.push(x);});
-      out[name]=a;
-    };
-    ["expenses","labor","updates","people","tasks","gallery"].forEach(merge);
-    if((!out.materials||out.materials.length===0)&&local.materials) out.materials=clone(local.materials);
-    out.settings=Object.assign({},local.settings||{},out.settings||{});
-    return out;
-  }
-
-  async function initialSync(){
-    const localRaw=localStorage.getItem(KEY);
-    const local=localPayload();
-    const m=meta();
-    try{
-      const cloud=await fetchCloud();
-      if(!cloud){
-        if(local){markDirty();await push();}
-        return;
-      }
-      const serverTime=cloud.updated_at||"";
-      /* If this browser has unsynced edits, never overwrite them with cloud data. */
-      if(m.dirty||dirty){
-        await push();
-        return;
-      }
-      /* Always reconcile the notebook seed into cloud. This is intentionally
-         independent of the old import marker, so upgrading an existing browser
-         cannot lose notebook records. IDs make the merge idempotent. */
-      const cloudRaw=JSON.stringify(cloud.payload);
-      const merged=mergeSeedInto(local,cloud.payload);
-      const mergedRaw=JSON.stringify(merged);
-      if(localRaw && mergedRaw!==cloudRaw){
-        Storage.prototype.setItem.call(localStorage,KEY,mergedRaw);
-        try{db=JSON.parse(mergedRaw);}catch(e){}
-        if(typeof renderAll==="function")renderAll();
-        markDirty();
-        await push();
-        return;
-      }
-      /* Cloud is the source of truth on a clean browser. */
-      if(localRaw!==cloudRaw){Storage.prototype.setItem.call(localStorage,KEY,cloudRaw);if(typeof db!=="undefined"&&db){try{db=JSON.parse(cloudRaw);}catch(e){}}if(typeof renderAll==="function")renderAll();}
-      lastCloudUpdatedAt=serverTime;clearDirty(serverTime);
-    }catch(e){
-      console.error("Initial cloud sync failed",e);
-      toast("Cloud sync failed — retrying…");
-    }
-  }
-
   async function pull(){
-    if(!configured()||busy||dirty) return false;
-    try{
-      const cloud=await fetchCloud(); if(!cloud) return true;
-      const serverTime=cloud.updated_at||"";
-      if(lastCloudUpdatedAt&&serverTime&&new Date(serverTime).getTime()<=new Date(lastCloudUpdatedAt).getTime()) return true;
-      const raw=JSON.stringify(cloud.payload), cur=localStorage.getItem(KEY);
-      if(cur!==raw){
-        Storage.prototype.setItem.call(localStorage,KEY,raw);
-        if(typeof db!=="undefined"&&db){try{db=JSON.parse(raw);}catch(e){}}
-        if(typeof renderAll==="function")renderAll();
-      }
-      lastCloudUpdatedAt=serverTime;clearDirty(serverTime);return true;
-    }catch(e){console.warn("Cloud pull failed",e);return false;}
+    if(!configured()||pushing||dirty)return;
+    try{const c=await getCloud();if(!c)return;const ct=c.updated_at||"";if(lastCloudUpdatedAt&&ct&&new Date(ct)<=new Date(lastCloudUpdatedAt))return;const raw=JSON.stringify(c.payload||{});if(localStorage.getItem(KEY)!==raw){Storage.prototype.setItem.call(localStorage,KEY,raw);if(typeof db!=="undefined")db=JSON.parse(raw);if(typeof renderAll==="function")renderAll();}lastCloudUpdatedAt=ct;setMeta();}
+    catch(e){console.warn("Cloud pull:",e)}
   }
-
-  const originalSetItem=Storage.prototype.setItem;
-  Storage.prototype.setItem=function(k,v){
-    const r=originalSetItem.apply(this,arguments);
-    if(this===localStorage&&k===KEY&&initialized) queuePush();
-    return r;
-  };
-
-  window.MARUTHAM_CLOUD={push, pull, queuePush};
-
-  document.addEventListener("DOMContentLoaded",async function(){
-    if(!configured()){toast("Cloud setup required");return;}
-    toast("Connecting to cloud…");
-    await initialSync();
-    initialized=true;
-    setInterval(()=>pull(),5000);
-    window.addEventListener("focus",()=>pull());
-    window.addEventListener("online",()=>{if(dirty)push();else pull();});
-    setTimeout(()=>{if(dirty)push();},1000);
-  });
+  const original=Storage.prototype.setItem;
+  Storage.prototype.setItem=function(k,v){const r=original.apply(this,arguments);if(this===localStorage&&k===KEY&&initialized)queue(500);return r;};
+  window.MARUTHAM_CLOUD={push,pull,queuePush:()=>queue(100)};
+  document.addEventListener("DOMContentLoaded",async()=>{if(!configured()){toast("Cloud setup required");return;}toast("Connecting to cloud…");await initial();initialized=true;setInterval(pull,5000);window.addEventListener("focus",pull);});
 })();
 </script>
 
