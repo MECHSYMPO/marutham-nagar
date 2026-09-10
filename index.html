@@ -1148,14 +1148,27 @@ window.BUILTRACK_CLOUD={
   function local(){try{const x=localStorage.getItem(KEY);return x?JSON.parse(x):null}catch(e){return null}}
   function clone(x){return JSON.parse(JSON.stringify(x));}
   function stampPayload(payload){const out=clone(payload||{});out._marutham_client_updated_at=new Date().toISOString();return out;}
-  async function getCloud(){const r=await fetch(row(),{headers:headers(),cache:"no-store"});const t=await r.text();if(!r.ok)throw Error("HTTP "+r.status+" "+t);const a=t?JSON.parse(t):[];return a[0]||null;}
+  async function fetchWithTimeout(url,opts={},ms=8000){
+    const c=new AbortController(); const id=setTimeout(()=>c.abort(),ms);
+    try{return await fetch(url,{...opts,signal:c.signal});}
+    catch(e){if(e&&e.name==="AbortError") throw Error("TIMEOUT"); throw e;}
+    finally{clearTimeout(id);}
+  }
+  async function getCloud(){const r=await fetchWithTimeout(row(),{headers:headers(),cache:"no-store"},8000);const t=await r.text();if(!r.ok)throw Error("HTTP "+r.status+" "+t);const a=t?JSON.parse(t):[];return a[0]||null;}
   async function upsert(payload){
     const now=new Date().toISOString();
     const body={id:cfg.PROJECT_ID,payload:stampPayload(payload),updated_at:now};
-    /* PUT is an explicit upsert and is more reliable than POST+on_conflict for REST clients. */
-    const r=await fetch(endpoint()+"?id=eq."+encodeURIComponent(cfg.PROJECT_ID),{method:"POST",headers:headers({Prefer:"resolution=merge-duplicates,return=representation"}),body:JSON.stringify(body),cache:"no-store"});
-    const t=await r.text();if(!r.ok)throw Error("HTTP "+r.status+" "+t);
-    let a=[];try{a=t?JSON.parse(t):[]}catch(e){};return (a[0]&&a[0].updated_at)||now;
+    // Update the existing row first. If it does not exist, create it.
+    let r=await fetchWithTimeout(endpoint()+"?id=eq."+encodeURIComponent(cfg.PROJECT_ID),{method:"PATCH",headers:headers({Prefer:"return=representation"}),body:JSON.stringify({payload:body.payload,updated_at:now}),cache:"no-store"},8000);
+    let t=await r.text();
+    if(!r.ok)throw Error("HTTP "+r.status+" "+t);
+    let a=[];try{a=t?JSON.parse(t):[]}catch(e){}
+    if(!a.length){
+      r=await fetchWithTimeout(endpoint(),{method:"POST",headers:headers({Prefer:"return=representation"}),body:JSON.stringify(body),cache:"no-store"},8000);
+      t=await r.text();if(!r.ok)throw Error("HTTP "+r.status+" "+t);
+      try{a=t?JSON.parse(t):[]}catch(e){}
+    }
+    return (a[0]&&a[0].updated_at)||now;
   }
   async function push(){
     if(!configured()||pushing)return false;
@@ -1188,7 +1201,15 @@ window.BUILTRACK_CLOUD={
   const original=Storage.prototype.setItem;
   Storage.prototype.setItem=function(k,v){const r=original.apply(this,arguments);if(this===localStorage&&k===KEY&&initialized)queue(500);return r;};
   window.MARUTHAM_CLOUD={push,pull,queuePush:()=>queue(100)};
-  document.addEventListener("DOMContentLoaded",async()=>{if(!configured()){toast("Cloud setup required");return;}toast("Connecting to cloud…");await initial();initialized=true;setInterval(pull,5000);window.addEventListener("focus",pull);});
+  document.addEventListener("DOMContentLoaded",()=>{
+    if(!configured()){toast("Cloud setup required");return;}
+    // Never block the app waiting for cloud. Start the UI immediately and sync in background.
+    toast("Connecting to cloud…");
+    initialized=true;
+    initial().finally(()=>{setTimeout(()=>toast("",true),1200);});
+    setInterval(pull,5000);
+    window.addEventListener("focus",pull);
+  });
 })();
 </script>
 
