@@ -592,6 +592,75 @@ body.viewer-mode [data-del-gallery]{
 
   let db = loadDB();
 
+  // Notebook import: Kothanar / Labour / Kooli / Appu Kothanar are the same person.
+  function importNotebookDataOnce() {
+    const marker = "marutham_notebook_import_v2";
+    if (localStorage.getItem(marker)) return false;
+    const laborSeed = [
+      ["2026-08-30","Kothanar","Advance",10000,"Notebook advance"],
+      ["2026-09-01","Kothanar","Labour / Kooli",12000,""],
+      ["2026-09-02","Kothanar","Labour / Kooli",10500,"3500 × 2 + 3000"],
+      ["2026-09-02","Kothanar","Labour / Kooli",5000,""],
+      ["2026-09-04","Kothanar","Labour / Kooli",12000,""],
+      ["2026-09-05","Kothanar","Labour / Kooli",12000,""],
+      ["2026-09-06","Kothanar","Labour / Kooli",10000,""],
+      ["2026-09-07","Kothanar","Labour / Kooli",22000,""],
+      ["2026-09-08","Kothanar","Labour / Kooli",20000,""]
+    ];
+    laborSeed.forEach((r,i)=>{const id=1740000000000+i;if(!db.labor.some(x=>String(x.id)===String(id)))db.labor.push({id,date:r[0],person:r[1],work:r[2],days:0,rate:0,payment:"Cash",amount:r[3],notes:r[4]});});
+
+    const expenseSeed = [
+      ["2026-09-06","Food","Food","",0,"Cash",600,"Notebook entry"],
+      ["2026-09-08","Food","Food","",0,"Cash",1000,"Notebook entry"],
+      ["2026-08-30","EB Connection","Electrical","",0,"Cash",17850,"Notebook expense"],
+      ["2026-08-30","Auto (Transport)","Transport","",0,"Cash",800,"Notebook expense"],
+      ["2026-08-30","Tax (House) without Bill","Tax","",0,"Cash",500,"Notebook expense"],
+      ["2026-08-30","Wood","Material","",0,"Cash",3750,"Notebook expense"],
+      ["2026-08-30","Nail","Material","",0,"Cash",175,"Notebook expense"],
+      ["2026-08-30","Advance","Labour Advance","Kothanar",0,"Cash",1000,"Appu Kothanar = Kothanar"],
+      ["2026-08-30","Shed Labour","Labour","",0,"Cash",4000,"Notebook expense"],
+      ["2026-08-30","Plan Xerox","Other","",0,"Cash",90,"Notebook expense"],
+      ["2026-09-02","JCB Operator","Equipment","",0,"Cash",500,"Notebook expense"],
+      ["2026-09-02","Food and Tea","Food","",0,"Cash",700,"Notebook expense"],
+      ["2026-09-02","Electric","Electrical","",0,"Cash",2000,"Notebook expense"],
+      ["2026-09-02","Centering","Labour","",0,"Cash",1000,"Notebook expense"],
+      ["2026-09-02","Load Tips","Labour","",0,"Cash",300,"Notebook expense"],
+      ["2026-09-02","Kothanar Bus","Transport","Kothanar",0,"Cash",5000,"Kothanar = Labour / Kooli"],
+      ["2026-09-04","Water Pipe","Plumbing","",0,"Cash",1700,"Notebook expense"],
+      ["2026-09-05","Shed Cost","Construction","",0,"Cash",13710,"Notebook expense"],
+      ["2026-09-05","Nail and Binding","Material","",0,"Cash",625,"Notebook expense"],
+      ["2026-09-05","Auto (Transport)","Transport","",0,"Cash",500,"Notebook expense"],
+      ["2026-09-05","Tea Cost (Labour)","Food","",0,"Cash",200,"Notebook expense"],
+      ["2026-09-05","Kothanar Advance","Labour Advance","Kothanar",0,"Cash",10000,"Kothanar = Labour / Kooli"],
+      ["2026-09-05","Poosa Items","Material","",0,"Cash",500,"Notebook expense"],
+      ["2026-09-05","Kothanar Kooli","Labour","Kothanar",0,"Cash",1000,"Kothanar = Labour / Kooli"],
+      ["2026-09-05","Electric Works (Things)","Electrical","",0,"Cash",4710,"Notebook expense"],
+      ["2026-09-05","Transport","Transport","",0,"Cash",200,"Notebook expense"],
+      ["2026-09-05","Appu Kothanar","Labour","Kothanar",0,"Cash",2500,"Appu Kothanar = Kothanar"],
+      ["2026-09-06","Diesel","Equipment","",0,"Cash",400,"Notebook expense"],
+      ["2026-09-06","Cement","Material","",0,"Cash",1000,"Notebook expense"],
+      ["2026-09-06","Food to Appu Kothanar","Food","Kothanar",0,"Cash",600,"Appu Kothanar = Kothanar"],
+      ["2026-09-08","3/4 Jally (2 units)","Material","",2,"Cash",10400,"Notebook expense"],
+      ["2026-09-08","Transport","Transport","",0,"Cash",1700,"Notebook expense"],
+      ["2026-09-08","Bricks / Material","Material","",0,"Cash",63900,"Notebook expense"],
+      ["2026-09-08","Dalmia Cement","Cement","",30,"Cash",9150,"Notebook expense"],
+      ["2026-09-08","16 mm KISCOL Steel","TMT Steel","",20,"Cash",26040,"Notebook expense"],
+      ["2026-09-08","12 mm KISCOL Steel","TMT Steel","",70,"Cash",51940,"Notebook expense"],
+      ["2026-09-08","10 mm KISCOL Steel","TMT Steel","",30,"Cash",15330,"Notebook expense"],
+      ["2026-09-08","8 mm KISCOL Steel","TMT Steel","",60,"Cash",19516,"Notebook expense"],
+      ["2026-09-08","Binding Wire","Material","",0,"Cash",2200,"Notebook expense"],
+      ["2026-09-08","1 1/2 Jally","Material","",2,"Cash",10400,"Notebook expense"],
+      ["2026-09-08","3/4 Jally","Material","",2,"Cash",10400,"Notebook expense"],
+      ["2026-09-08","Rent + Labour","Labour","",0,"Cash",1200,"Notebook expense"]
+    ];
+    expenseSeed.forEach((r,i)=>{const id=1741000000000+i;if(!db.expenses.some(x=>String(x.id)===String(id)))db.expenses.push({id,date:r[0],description:r[1],category:r[2],brand:"",quantity:r[4],unit:"",person:r[3],payment:r[5],amount:r[6],notes:r[7]});});
+
+    localStorage.setItem(marker,"1");
+    localStorage.setItem(STORAGE_KEY,JSON.stringify(db));
+    return true;
+  }
+  importNotebookDataOnce();
+
   function defaultDB() {
     return {
       settings: {project:"MARUTHAM NAGAR", owner:"", location:"", start:"", target:"", budget:0, area:0, rate:0, cont:5},
@@ -1058,162 +1127,159 @@ body.viewer-mode [data-del-gallery]{
 </div>
 
 <script id="buildtrackCloudSync">
-/* MARUTHAM NAGAR — SHARED SUPABASE SYNC (stable version) */
+/* MARUTHAM NAGAR — ROBUST SUPABASE CLOUD SYNC */
 window.BUILTRACK_CLOUD = {
   SUPABASE_URL: "https://fmbzibdkuqazvsdfyafb.supabase.co",
   SUPABASE_ANON_KEY: "sb_publishable_lPGb0UY_8-TeWLS_vcwscw_Bo-_WzSR",
   PROJECT_ID: "main"
 };
-
 (function(){
+  "use strict";
   const cfg=window.BUILTRACK_CLOUD;
   const KEY="buildtrack_complete_v1";
-  const META_KEY="buildtrack_cloud_meta_v1";
-  let lastCloudSignature="";
-  let busy=false;
-  let pendingLocalWrite=false;
-  let pushTimer=null;
-  let initialized=false;
+  const META_KEY="buildtrack_cloud_meta_v4";
+  const NOTEBOOK_MARKER="marutham_notebook_import_v2";
+  let initialized=false, busy=false, timer=null, dirty=false, lastCloudUpdatedAt="";
 
   function configured(){
-    return !!(cfg.SUPABASE_URL && cfg.SUPABASE_ANON_KEY &&
-      !cfg.SUPABASE_URL.includes("PASTE_YOUR") &&
-      !cfg.SUPABASE_ANON_KEY.includes("PASTE_YOUR"));
+    return !!(cfg&&cfg.SUPABASE_URL&&cfg.SUPABASE_ANON_KEY&&/^https:\/\/[^\s]+\.supabase\.co$/.test(cfg.SUPABASE_URL)&&!cfg.SUPABASE_ANON_KEY.includes("PASTE_YOUR"));
   }
-  function baseUrl(){ return cfg.SUPABASE_URL.replace(/\/$/,""); }
-  function endpoint(){
-    return baseUrl()+"/rest/v1/buildtrack_project?id=eq."+encodeURIComponent(cfg.PROJECT_ID);
-  }
-  function headers(extra){
-    return Object.assign({
-      "apikey":cfg.SUPABASE_ANON_KEY,
-      "Authorization":"Bearer "+cfg.SUPABASE_ANON_KEY,
-      "Content-Type":"application/json",
-      "Accept":"application/json"
-    }, extra||{});
-  }
-  function signature(raw){
-    return (raw||"").length+":"+((raw||"").slice(0,100))+":"+((raw||"").slice(-100));
-  }
-  function setStatus(text,show){
-    let el=document.getElementById("cloudStatus");
-    if(!el){
-      el=document.createElement("div"); el.id="cloudStatus";
-      el.style.cssText="position:fixed;right:14px;bottom:14px;z-index:99999;padding:8px 12px;border-radius:10px;background:rgba(15,23,42,.92);color:#fff;font:700 12px Arial;box-shadow:0 8px 24px rgba(0,0,0,.2)";
-      document.body.appendChild(el);
-    }
-    el.textContent=text; el.style.display=show?"block":"none";
-  }
-  function markPending(){
-    pendingLocalWrite=true;
-    try{localStorage.setItem(META_KEY,JSON.stringify({pending:true,at:Date.now()}));}catch(e){}
-  }
-  function clearPending(){
-    pendingLocalWrite=false;
-    try{localStorage.setItem(META_KEY,JSON.stringify({pending:false,at:Date.now()}));}catch(e){}
+  function base(){return cfg.SUPABASE_URL.replace(/\/$/,"");}
+  function url(){return base()+"/rest/v1/buildtrack_project";}
+  function rowUrl(){return url()+"?id=eq."+encodeURIComponent(cfg.PROJECT_ID)+"&select=id,payload,updated_at";}
+  function hdr(extra){return Object.assign({apikey:cfg.SUPABASE_ANON_KEY,Authorization:"Bearer "+cfg.SUPABASE_ANON_KEY,"Content-Type":"application/json",Accept:"application/json"},extra||{});}
+  function toast(t,hide){let e=document.getElementById("cloudStatus");if(!e){e=document.createElement("div");e.id="cloudStatus";e.style.cssText="position:fixed;right:14px;bottom:14px;z-index:99999;padding:9px 12px;border-radius:10px;background:rgba(15,23,42,.95);color:#fff;font:700 12px Arial;box-shadow:0 8px 24px rgba(0,0,0,.2);max-width:90vw";document.body.appendChild(e);}e.textContent=t;e.style.display=hide?"none":"block";}
+  function meta(){try{return JSON.parse(localStorage.getItem(META_KEY)||"{}");}catch(e){return {};}}
+  function saveMeta(){try{localStorage.setItem(META_KEY,JSON.stringify({dirty,lastCloudUpdatedAt}));}catch(e){}}
+  function markDirty(){dirty=true;saveMeta();}
+  function clearDirty(t){dirty=false;if(t)lastCloudUpdatedAt=t;saveMeta();}
+  function localPayload(){try{const r=localStorage.getItem(KEY);return r?JSON.parse(r):null;}catch(e){return null;}}
+  function clone(x){return JSON.parse(JSON.stringify(x));}
+
+  async function fetchCloud(){
+    const res=await fetch(rowUrl(),{headers:hdr(),cache:"no-store"});
+    const text=await res.text();
+    if(!res.ok) throw new Error("HTTP "+res.status+" "+text);
+    const rows=text?JSON.parse(text):[];
+    return rows[0]||null;
   }
 
   async function push(){
-    if(!configured()) return false;
-    if(busy) return false;
-    const raw=localStorage.getItem(KEY);
-    if(!raw) return false;
+    if(!configured()||busy) return false;
+    const payload=localPayload(); if(!payload) return false;
     busy=true;
     try{
-      const payload=JSON.parse(raw);
       const now=new Date().toISOString();
-      const res=await fetch(baseUrl()+"/rest/v1/buildtrack_project",{
+      const res=await fetch(url()+"?on_conflict=id",{
         method:"POST",
-        headers:headers({"Prefer":"resolution=merge-duplicates,return=minimal"}),
+        headers:hdr({Prefer:"resolution=merge-duplicates,return=representation"}),
         body:JSON.stringify({id:cfg.PROJECT_ID,payload,updated_at:now})
       });
-      if(!res.ok){
-        const msg=await res.text().catch(()=>"");
-        console.error("Supabase push failed",res.status,msg);
-        setStatus("Cloud sync failed",true);
-        setTimeout(()=>setStatus("",false),3500);
-        return false;
-      }
-      lastCloudSignature=signature(raw);
-      clearPending();
-      setStatus("Cloud synced ✓",true);
-      setTimeout(()=>setStatus("",false),1800);
+      const text=await res.text();
+      if(!res.ok){toast("Cloud sync failed ("+res.status+")");console.error("Supabase push",res.status,text);return false;}
+      let rows=[];try{rows=text?JSON.parse(text):[];}catch(e){}
+      clearDirty((rows[0]&&rows[0].updated_at)||now);
+      toast("Cloud synced ✓");setTimeout(()=>toast("",true),1500);
       return true;
-    }catch(e){
-      console.error("Supabase push error",e);
-      setStatus("Cloud sync unavailable",true);
-      setTimeout(()=>setStatus("",false),3500);
-      return false;
-    }finally{busy=false;}
+    }catch(e){console.error(e);toast("Cloud connection failed");return false;}
+    finally{busy=false;}
   }
 
-  function schedulePush(){
-    markPending();
-    clearTimeout(pushTimer);
-    pushTimer=setTimeout(async function(){
-      const ok=await push();
-      if(!ok && pendingLocalWrite){
-        // Retry automatically if a temporary request/race failed.
-        pushTimer=setTimeout(schedulePush,1500);
+  function queuePush(delay=350){
+    markDirty(); clearTimeout(timer);
+    timer=setTimeout(async()=>{const ok=await push();if(!ok&&dirty)queuePush(2500);},delay);
+  }
+
+  function mergeSeedInto(local, cloud){
+    if(!local) return cloud||null;
+    if(!cloud) return local;
+    const out=clone(cloud);
+    const merge=(name)=>{
+      const a=Array.isArray(out[name])?out[name]:[];
+      const b=Array.isArray(local[name])?local[name]:[];
+      const ids=new Set(a.map(x=>String(x.id)));
+      b.forEach(x=>{if(!ids.has(String(x.id))) a.push(x);});
+      out[name]=a;
+    };
+    ["expenses","labor","updates","people","tasks","gallery"].forEach(merge);
+    if((!out.materials||out.materials.length===0)&&local.materials) out.materials=clone(local.materials);
+    out.settings=Object.assign({},local.settings||{},out.settings||{});
+    return out;
+  }
+
+  async function initialSync(){
+    const localRaw=localStorage.getItem(KEY);
+    const local=localPayload();
+    const m=meta();
+    try{
+      const cloud=await fetchCloud();
+      if(!cloud){
+        if(local){markDirty();await push();}
+        return;
       }
-    },100);
+      const serverTime=cloud.updated_at||"";
+      /* If this browser has unsynced edits, never overwrite them with cloud data. */
+      if(m.dirty||dirty){
+        await push();
+        return;
+      }
+      /* Always reconcile the notebook seed into cloud. This is intentionally
+         independent of the old import marker, so upgrading an existing browser
+         cannot lose notebook records. IDs make the merge idempotent. */
+      const cloudRaw=JSON.stringify(cloud.payload);
+      const merged=mergeSeedInto(local,cloud.payload);
+      const mergedRaw=JSON.stringify(merged);
+      if(localRaw && mergedRaw!==cloudRaw){
+        Storage.prototype.setItem.call(localStorage,KEY,mergedRaw);
+        try{db=JSON.parse(mergedRaw);}catch(e){}
+        if(typeof renderAll==="function")renderAll();
+        markDirty();
+        await push();
+        return;
+      }
+      /* Cloud is the source of truth on a clean browser. */
+      if(localRaw!==cloudRaw){Storage.prototype.setItem.call(localStorage,KEY,cloudRaw);if(typeof db!=="undefined"&&db){try{db=JSON.parse(cloudRaw);}catch(e){}}if(typeof renderAll==="function")renderAll();}
+      lastCloudUpdatedAt=serverTime;clearDirty(serverTime);
+    }catch(e){
+      console.error("Initial cloud sync failed",e);
+      toast("Cloud sync failed — retrying…");
+    }
   }
 
   async function pull(){
-    if(!configured() || busy || pendingLocalWrite) return;
+    if(!configured()||busy||dirty) return false;
     try{
-      const res=await fetch(endpoint(),{
-        headers:headers(),cache:"no-store"
-      });
-      if(!res.ok){
-        console.warn("Supabase pull failed",res.status,await res.text().catch(()=>""));
-        return;
+      const cloud=await fetchCloud(); if(!cloud) return true;
+      const serverTime=cloud.updated_at||"";
+      if(lastCloudUpdatedAt&&serverTime&&new Date(serverTime).getTime()<=new Date(lastCloudUpdatedAt).getTime()) return true;
+      const raw=JSON.stringify(cloud.payload), cur=localStorage.getItem(KEY);
+      if(cur!==raw){
+        Storage.prototype.setItem.call(localStorage,KEY,raw);
+        if(typeof db!=="undefined"&&db){try{db=JSON.parse(raw);}catch(e){}}
+        if(typeof renderAll==="function")renderAll();
       }
-      const rows=await res.json();
-      if(!rows || !rows.length || !rows[0].payload) return;
-      const raw=JSON.stringify(rows[0].payload);
-      const sig=signature(raw);
-      if(sig===lastCloudSignature) return;
-
-      // Never replace an Admin's unsaved/new local state while it is being uploaded.
-      if(pendingLocalWrite) return;
-
-      const localRaw=localStorage.getItem(KEY);
-      localStorage.setItem(KEY,raw);
-      lastCloudSignature=sig;
-      if(localRaw!==raw && initialized){
-        // Viewer gets fresh cloud data without creating a write loop.
-        renderAll();
-      }
-    }catch(e){
-      console.warn("Supabase pull error",e);
-    }
+      lastCloudUpdatedAt=serverTime;clearDirty(serverTime);return true;
+    }catch(e){console.warn("Cloud pull failed",e);return false;}
   }
 
   const originalSetItem=Storage.prototype.setItem;
   Storage.prototype.setItem=function(k,v){
-    const result=originalSetItem.apply(this,arguments);
-    if(this===localStorage && k===KEY && initialized) schedulePush();
-    return result;
+    const r=originalSetItem.apply(this,arguments);
+    if(this===localStorage&&k===KEY&&initialized) queuePush();
+    return r;
   };
 
+  window.MARUTHAM_CLOUD={push, pull, queuePush};
+
   document.addEventListener("DOMContentLoaded",async function(){
-    if(!configured()) return;
-    setStatus("Connecting to cloud…",true);
-    // Do not overwrite local data immediately. First check cloud only when there is no local data.
-    const localRaw=localStorage.getItem(KEY);
-    if(!localRaw){
-      await pull();
-    } else {
-      lastCloudSignature=signature(localRaw);
-      // Existing Admin/local data is uploaded first; this prevents stale cloud data
-      // from replacing newly entered information.
-      pendingLocalWrite=true;
-      await push();
-    }
+    if(!configured()){toast("Cloud setup required");return;}
+    toast("Connecting to cloud…");
+    await initialSync();
     initialized=true;
-    setInterval(pull,5000);
-    window.addEventListener("focus",pull);
+    setInterval(()=>pull(),5000);
+    window.addEventListener("focus",()=>pull());
+    window.addEventListener("online",()=>{if(dirty)push();else pull();});
+    setTimeout(()=>{if(dirty)push();},1000);
   });
 })();
 </script>
